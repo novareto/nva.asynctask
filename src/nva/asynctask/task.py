@@ -25,7 +25,15 @@ class AfterCommitTask(celery.Task):
                 super(AfterCommitTask, self).apply_async(*args, **kw)
         transaction.get().addAfterCommitHook(hook)
 
+    def run(self, context, *args, **kwargs):
+        # Run the task inside a transaction.
+        # The object revival needs to happen inside this transaction too.
+        try:
+            celery.Task.run(self, context, *args, **kwargs)
+        except Exception as e:
+            self.retry(exc=e)
 
+        
 def zope_task(**kwargs):
 
     def get_root():
