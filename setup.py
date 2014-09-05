@@ -28,6 +28,7 @@ setup(
     zip_safe=False,
     install_requires=[
         'setuptools',
+        'z3c.objpath',
         ],
     entry_points="""
       # -*- entry_points -*

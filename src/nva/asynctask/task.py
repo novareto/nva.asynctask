@@ -33,7 +33,7 @@ class AfterCommitTask(celery.Task):
         except Exception as e:
             self.retry(exc=e)
 
-        
+
 def zope_task(**kwargs):
 
     def get_root():
