@@ -5,10 +5,12 @@
 import celery
 import transaction
 
+from ZODB.interfaces import IDatabase
+
 from celery.contrib import rdb
 from z3c.objpath import resolve
 from zope.app.publication.zopepublication import ZopePublication
-from zope.app.wsgi import config
+from zope.component import getUtility
 from zope.component.hooks import setSite, getSite
 
 from . import REDIS_CLIENT, ZOPE_CONF
@@ -24,39 +26,20 @@ class AfterCommitTask(celery.Task):
         transaction.get().addAfterCommitHook(hook)
 
 
-def simpleton(path, timeout=None):
-    """Enforce only one celery task at a time, on the given path.
-    """
-
-    def simpleton_wrapper(run_func):
-        def simpleton_runner(*args, **kwargs):
-            with REDIS_CLIENT.lock(path, timeout=timeout):
-                ret_value = run_func(*args, **kwargs)
-            return ret_value
-        return simpleton_runner
-
-    return simpleton_wrapper
-
-
 def zope_task(**kwargs):
-    
+
+    def get_root():
+        conn = getUtility(IDatabase).open()
+        return conn.root()[ZopePublication.root_name]
+
     def wrap(func):
         def queued_task(*args, **kw):
-
-            @simpleton(path=kw.get('path'))
-            def db_modificator(obj):
-                with transaction.manager:
-                    result = func(obj, *args, **kw)
-                return result
-
             try:
-                db = config(ZOPE_CONF, None, ())
-                connection = db.open()
-                root = connection.root()
-                root_folder = root.get(ZopePublication.root_name, None)
+                root_folder = get_root()
                 setSite(root_folder['app'])
                 obj = resolve(getSite(), kw.get('path'))
-                result = db_modificator(obj)
+                with transaction.manager:
+                    result = func(obj, *args, **kw)
             finally:
                 setSite(None)
                 db.close()
