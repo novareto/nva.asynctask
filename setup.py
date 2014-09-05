@@ -29,10 +29,6 @@ setup(
     install_requires=[
         'setuptools',
         ],
-    tests_require=tests_require,
-    extras_require=dict(
-        test=tests_require
-        ),
     entry_points="""
       # -*- entry_points -*
       """,
