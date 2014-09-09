@@ -2,6 +2,7 @@
 # Copyright (c) 2007-2013 NovaReto GmbH
 # cklinger@novareto.de
 
+import kombu
 import celery
 import transaction
 
@@ -13,47 +14,57 @@ from zope.app.publication.zopepublication import ZopePublication
 from zope.component import getUtility
 from zope.component.hooks import setSite, getSite
 
-from . import REDIS_CLIENT, ZOPE_CONF
+from . import REDIS_CLIENT, ZOPE_CONF, celery_app
 
 
-class AfterCommitTask(celery.Task):
+class ZopeTask(celery.Task):
+    """ A database task knowns:
+    1. to find the root of the database
+    2. to execute the code in a transaction
+    """
     abstract = True
+    _conn = None
 
-    def apply_async(self, *args, **kw):
-        def hook(success):
-            if success:
-                super(AfterCommitTask, self).apply_async(*args, **kw)
-        transaction.get().addAfterCommitHook(hook)
-
-    def run(self, context, *args, **kwargs):
-        # Run the task inside a transaction.
-        # The object revival needs to happen inside this transaction too.
+    def get_connection(self):
+        if self._conn is None:
+            self._conn = getUtility(IDatabase).open()
+        return self._conn
+        
+    def delay(self, context, *args, **kwargs):
+        oid = context._p_oid
+        return celery.Task.delay(self, oid, *args, **kwargs)
+        
+    def __call__(self, oid, *args, **kwargs):
+        conn = self.get_connection()
+        root = conn.root()[ZopePublication.root_name]
         try:
-            celery.Task.run(self, context, *args, **kwargs)
+            with transaction.manager:
+                site = root['app']
+                setSite(site)
+                context = conn.get(oid)
+                print "Calling the task"
+                return self.run(context, *args, **kwargs)
         except Exception as e:
             self.retry(exc=e)
 
 
-def zope_task(**kwargs):
+class TransactionAwareTask(ZopeTask):
+    """
+    Only give the task to the broker on successful commit of the
+    transaction.
+    """
+    abstract = True
+    
+    def apply_async(self, *args, **kwargs):
+        task_id = kombu.utils.uuid()
+    
+        def hook(success):
+            if success:
+                ZopeTask.apply_async(self, *args, **kwargs)
 
-    def get_root():
-        conn = getUtility(IDatabase).open()
-        return conn.root()[ZopePublication.root_name]
+        transaction.get().addAfterCommitHook(hook)
+        return self.AsyncResult(task_id)
 
-    def wrap(func):
-        def queued_task(*args, **kw):
-            try:
-                root_folder = get_root()
-                setSite(root_folder['app'])
-                obj = resolve(getSite(), kw.get('path'))
-                with transaction.manager:
-                    result = func(obj, *args, **kw)
-            finally:
-                setSite(None)
-                db.close()
 
-            return result
-                
-        queued_task.__name__ = func.__name__
-        return celery.task(base=AfterCommitTask, **kwargs)(queued_task)
-    return wrap
+def zope_conf(func):
+    return celery_app.task(base=TransactionAwareTask)(func)
