@@ -5,8 +5,10 @@
 import kombu
 import celery
 import transaction
+import zope.location
+
+
 from ZODB.interfaces import IDatabase
-from zope.app.publication.zopepublication import ZopePublication
 from zope.component import getUtility
 from zope.component.hooks import setSite
 from . import celery_app
@@ -24,19 +26,18 @@ class ZopeTask(celery.Task):
         if self._conn is None:
             self._conn = getUtility(IDatabase).open()
         return self._conn
-        
+
     def delay(self, context, *args, **kwargs):
         oid = context._p_oid
         return celery.Task.delay(self, oid, *args, **kwargs)
-        
+
     def __call__(self, oid, *args, **kwargs):
         conn = self.get_connection()
-        root = conn.root()[ZopePublication.root_name]
         try:
             with transaction.manager:
-                site = root['app']
-                setSite(site)
                 context = conn.get(oid)
+                location_info = zope.location.interfaces.ILocationInfo(context)
+                setSite(location_info.getNearestSite())
                 return self.run(context, *args, **kwargs)
         except Exception as e:
             self.retry(exc=e)
@@ -48,10 +49,10 @@ class TransactionAwareTask(ZopeTask):
     transaction.
     """
     abstract = True
-    
+
     def apply_async(self, *args, **kwargs):
         task_id = kombu.utils.uuid()
-    
+
         def hook(success):
             if success:
                 ZopeTask.apply_async(self, *args, **kwargs)
@@ -60,5 +61,5 @@ class TransactionAwareTask(ZopeTask):
         return self.AsyncResult(task_id)
 
 
-def zope_conf(func):
+def zope_task(func):
     return celery_app.task(base=TransactionAwareTask)(func)
