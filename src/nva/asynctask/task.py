@@ -5,16 +5,11 @@
 import kombu
 import celery
 import transaction
-
 from ZODB.interfaces import IDatabase
-
-from celery.contrib import rdb
-from z3c.objpath import resolve
 from zope.app.publication.zopepublication import ZopePublication
 from zope.component import getUtility
-from zope.component.hooks import setSite, getSite
-
-from . import REDIS_CLIENT, ZOPE_CONF, celery_app
+from zope.component.hooks import setSite
+from . import celery_app
 
 
 class ZopeTask(celery.Task):

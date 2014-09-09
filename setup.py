@@ -28,7 +28,12 @@ setup(
     zip_safe=False,
     install_requires=[
         'setuptools',
-        'z3c.objpath',
+        'ZODB.interfaces.IDatabase',
+        'celery',
+        'kombu',
+        'transaction',
+        'zope.app.publication',
+        'zope.component',
         ],
     entry_points="""
       # -*- entry_points -*
