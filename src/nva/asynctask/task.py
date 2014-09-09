@@ -42,7 +42,6 @@ class ZopeTask(celery.Task):
                 site = root['app']
                 setSite(site)
                 context = conn.get(oid)
-                print "Calling the task"
                 return self.run(context, *args, **kwargs)
         except Exception as e:
             self.retry(exc=e)
