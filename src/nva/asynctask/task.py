@@ -7,11 +7,10 @@ import celery
 import transaction
 import zope.location
 
-
 from ZODB.interfaces import IDatabase
 from zope.component import getUtility
 from zope.component.hooks import setSite
-from . import celery_app
+from .conf import celery_app
 
 
 class ZopeTask(celery.Task):
@@ -43,7 +42,7 @@ class ZopeTask(celery.Task):
             self.retry(exc=e)
 
 
-class TransactionAwareTask(ZopeTask):
+class TransactionAwareTask(celery.Task):
     """
     Only give the task to the broker on successful commit of the
     transaction.
@@ -55,11 +54,19 @@ class TransactionAwareTask(ZopeTask):
 
         def hook(success):
             if success:
-                ZopeTask.apply_async(self, *args, **kwargs)
+                celery.Task.apply_async(self, *args, **kwargs)
 
         transaction.get().addAfterCommitHook(hook)
         return self.AsyncResult(task_id)
 
 
-def zope_task(func):
+class ZopeTransactionalTask(ZopeTask, TransactionAwareTask):
+    abstract = True
+
+
+def transactional_task(func):
     return celery_app.task(base=TransactionAwareTask)(func)
+    
+    
+def zope_task(func):
+    return celery_app.task(base=ZopeTransactionalTask)(func)
