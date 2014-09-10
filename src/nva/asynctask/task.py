@@ -39,9 +39,10 @@ class ZopeTask(celery.Task):
             with transaction.manager:
                 if 'oid' in kwargs and not 'context' in kwargs:
                     kwargs['context'] = conn.get(kwargs['oid'])
-                if 'context' in kwargs:
+                if 'context' in kwargs and 'oid' in kwargs:
                     location_info = ILocationInfo(kwargs['context'])
                     setSite(location_info.getNearestSite())
+                    del kwargs['oid']
                 return self.run(*args, **kwargs)
         except Exception as e:
             self.retry(exc=e)
@@ -71,7 +72,7 @@ class ZopeTransactionalTask(ZopeTask, TransactionAwareTask):
 
 def transactional_task(func):
     return celery_app.task(base=TransactionAwareTask)(func)
-    
-    
+
+
 def zope_task(func):
     return celery_app.task(base=ZopeTransactionalTask)(func)
