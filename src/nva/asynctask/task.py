@@ -29,8 +29,8 @@ class ZopeTask(celery.Task):
 
     def delay(self, *args, **kwargs):
         if 'context' in kwargs and not 'oid' in kwargs:
-            kwargs['oid'] = kwargs['context']._p_oid
-            del kwargs['context']
+            context = kwargs.pop('context')
+            kwargs['oid'] = context._p_oid
         return celery.Task.delay(self, *args, **kwargs)
 
     def __call__(self, *args, **kwargs):
@@ -38,11 +38,12 @@ class ZopeTask(celery.Task):
         try:
             with transaction.manager:
                 if 'oid' in kwargs and not 'context' in kwargs:
-                    kwargs['context'] = conn.get(kwargs['oid'])
-                if 'context' in kwargs and 'oid' in kwargs:
+                    oid = kwargs.pop('oid')
+                    kwargs['context'] = conn.get(oid)
+                if 'context' in kwargs:
                     location_info = ILocationInfo(kwargs['context'])
                     setSite(location_info.getNearestSite())
-                    del kwargs['oid']
+
                 return self.run(*args, **kwargs)
         except Exception as e:
             self.retry(exc=e)
