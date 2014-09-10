@@ -26,18 +26,21 @@ class ZopeTask(celery.Task):
             self._conn = getUtility(IDatabase).open()
         return self._conn
 
-    def delay(self, context, *args, **kwargs):
-        oid = context._p_oid
-        return celery.Task.delay(self, oid, *args, **kwargs)
+    def delay(self, **kwargs):
+        if 'context' in kwargs and not 'oid' in kwargs:
+            kwargs['oid'] = kwargs['context']._p_oid
+            del kwargs['context']
+        return celery.Task.delay(self, **kwargs)
 
-    def __call__(self, oid, *args, **kwargs):
+    def __call__(self, **kwargs):
         conn = self.get_connection()
         try:
             with transaction.manager:
-                context = conn.get(oid)
+                if 'oid' in kwargs and not 'context' in kwargs:
+                    kwargs['context'] = conn.get(kwargs['oid'])
                 location_info = zope.location.interfaces.ILocationInfo(context)
                 setSite(location_info.getNearestSite())
-                return self.run(context, *args, **kwargs)
+                return self.run(**kwargs)
         except Exception as e:
             self.retry(exc=e)
 
@@ -49,12 +52,12 @@ class TransactionAwareTask(celery.Task):
     """
     abstract = True
 
-    def apply_async(self, *args, **kwargs):
+    def apply_async(self, **kwargs):
         task_id = kombu.utils.uuid()
 
         def hook(success):
             if success:
-                celery.Task.apply_async(self, *args, **kwargs)
+                celery.Task.apply_async(self, **kwargs)
 
         transaction.get().addAfterCommitHook(hook)
         return self.AsyncResult(task_id)
