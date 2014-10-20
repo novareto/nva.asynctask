@@ -83,6 +83,31 @@ Tasks die erst nach einer erflogreichen Transaktion aufgerufen werden
     def send_mail():
         send_mymail(....)
 
+
 Tasks die innerhalb eines ZopeStacks und innerhalb einer eigenen Transaktion laufen.
 
+.. code-block:: python 
 
+    from nva.asynctask.task import zope_task 
+    @zope_task
+    def smail(*args, **kwargs):
+        from .emailer import send_mail
+        send_mail('cklinger@nvatest.de', ('cklinger@nvatest.de', ),  kwargs.get('message') + 'A', "LBBLALLA")
+
+
+Taks die innerhalb des ZopeStacks laufen und die ZODB-verändern
+
+
+.. code-block:: python 
+
+    # Call
+    update_title.delay(context=self.context, message='HALLO')
+
+    # Caller
+    from nva.asynctask.task import zope_task 
+
+    @zope_task
+    def update_title(context, message):
+        context.title = context.title + message
+        context.counter += 1
+        return context.title
