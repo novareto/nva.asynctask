@@ -43,7 +43,6 @@ class ZopeTask(celery.Task):
                 if 'context' in kwargs:
                     location_info = ILocationInfo(kwargs['context'])
                     setSite(location_info.getNearestSite())
-
                 return self.run(*args, **kwargs)
         except Exception as e:
             self.retry(exc=e)
